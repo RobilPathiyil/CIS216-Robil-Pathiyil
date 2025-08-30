@@ -1,0 +1,60 @@
+"""CLI for BMI calculations using BMICalculator.
+
+
+All user input/output is handled here per assignment requirements.
+"""
+from __future__ import annotations
+
+
+from bmi_calculator import BMICalculator
+
+
+
+
+def bmi_category(bmi: float) -> str:
+"""Return a basic BMI category label for display purposes only."""
+if bmi < 18.5:
+return "Underweight"
+if bmi < 25:
+return "Normal weight"
+if bmi < 30:
+return "Overweight"
+return "Obesity"
+
+
+
+
+def run_cli() -> None:
+"""Run an interactive prompt for BMI calculation."""
+calc = BMICalculator()
+
+
+print("=== BMI Calculator ===")
+print("Choose units: 1) Metric (kg, m) 2) U.S. (lb, ft, in)")
+choice = input("Enter 1 or 2: ").strip()
+
+
+try:
+if choice == "1":
+kilograms = float(input("Enter mass in kilograms: ").strip())
+meters = float(input("Enter height in meters: ").strip())
+bmi = calc.calculate_metric(kilograms, meters)
+elif choice == "2":
+pounds = float(input("Enter mass in pounds: ").strip())
+feet = float(input("Enter height (feet): ").strip())
+inches = float(input("Enter remaining inches: ").strip())
+bmi = calc.calculate_us(pounds, feet, inches)
+else:
+print("Invalid choice. Please run again and enter 1 or 2.")
+return
+
+
+print(f"\nYour BMI: {bmi:.1f} ({bmi_category(bmi)})")
+except ValueError as exc:
+print(f"Input error: {exc}")
+
+
+
+
+if __name__ == "__main__":
+run_cli()
