@@ -1,0 +1,134 @@
+"""BMI calculation utilities — OOP methods example.
+Args:
+pounds: Body mass in pounds; must be > 0.
+feet: Whole feet component of height; must be >= 0.
+inches: Inches component of height; must be >= 0.
+
+
+Returns:
+The BMI value as a float.
+
+
+Raises:
+ValueError: If weight/height values are invalid or zero.
+"""
+self._validate_positive(pounds, "pounds")
+self._validate_non_negative(feet, "feet")
+self._validate_non_negative(inches, "inches")
+
+
+total_inches = self._feet_to_inches(feet) + inches
+meters = self._inches_to_meters(total_inches)
+kilograms = self._pounds_to_kilograms(pounds)
+return self.calculate_metric(kilograms, meters)
+
+
+# -------- Private helpers (conventionally private, single underscore) -------
+
+
+def _pounds_to_kilograms(self, pounds: float) -> float:
+"""Convert pounds to kilograms.
+
+
+Args:
+pounds: Weight in pounds; must be > 0.
+"""
+self._validate_positive(pounds, "pounds")
+return pounds / POUNDS_PER_KILOGRAM
+
+
+def _feet_to_inches(self, feet: float) -> float:
+"""Convert feet to inches.
+
+
+Args:
+feet: Non-negative feet value.
+"""
+self._validate_non_negative(feet, "feet")
+return feet * INCHES_PER_FOOT
+
+
+def _inches_to_meters(self, inches: float) -> float:
+"""Convert inches to meters.
+
+
+Args:
+inches: Non-negative inches value.
+"""
+self._validate_non_negative(inches, "inches")
+return inches * METERS_PER_INCH
+
+
+# ------------------------- Validation utilities ----------------------------
+
+
+@staticmethod
+def _validate_positive(value: float, name: str) -> None:
+if value <= 0:
+raise ValueError(f"{name} must be > 0; got {value}.")
+
+
+@staticmethod
+def _validate_non_negative(value: float, name: str) -> None:
+if value < 0:
+raise ValueError(f"{name} must be >= 0; got {value}.")
+"""CLI for BMI calculations using BMICalculator.
+
+
+All user input/output is handled here per assignment requirements.
+"""
+from __future__ import annotations
+
+
+from bmi_calculator import BMICalculator
+
+
+
+
+def bmi_category(bmi: float) -> str:
+"""Return a basic BMI category label for display purposes only."""
+if bmi < 18.5:
+return "Underweight"
+if bmi < 25:
+return "Normal weight"
+if bmi < 30:
+return "Overweight"
+return "Obesity"
+
+
+
+
+def run_cli() -> None:
+"""Run an interactive prompt for BMI calculation."""
+calc = BMICalculator()
+
+
+print("=== BMI Calculator ===")
+print("Choose units: 1) Metric (kg, m) 2) U.S. (lb, ft, in)")
+choice = input("Enter 1 or 2: ").strip()
+
+
+try:
+if choice == "1":
+kilograms = float(input("Enter mass in kilograms: ").strip())
+meters = float(input("Enter height in meters: ").strip())
+bmi = calc.calculate_metric(kilograms, meters)
+elif choice == "2":
+pounds = float(input("Enter mass in pounds: ").strip())
+feet = float(input("Enter height (feet): ").strip())
+inches = float(input("Enter remaining inches: ").strip())
+bmi = calc.calculate_us(pounds, feet, inches)
+else:
+print("Invalid choice. Please run again and enter 1 or 2.")
+return
+
+
+print(f"\nYour BMI: {bmi:.1f} ({bmi_category(bmi)})")
+except ValueError as exc:
+print(f"Input error: {exc}")
+
+
+
+
+if __name__ == "__main__":
+run_cli()
