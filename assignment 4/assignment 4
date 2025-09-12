@@ -1,0 +1,9 @@
+python3 assignment4_bmi_validation.py
+# Pick 1 (metric): enter 80 and 1.8 → prints BMI ≈ 24.7
+# Pick 2 (US): enter 200 lb, 6 ft, 0 in → prints BMI ≈ 27.1
+# Try bad inputs (e.g., “abc”, –5, inf) → program prints clear error and exits (graceful fail)
+mkdir -p "Assignment 4"
+cp assignment4_bmi_validation.py "Assignment 4"/
+git add "Assignment 4" README.md
+git commit -m "Assignment 4: Validation + exceptions + assertions for property-based BMI"
+git push origin main
