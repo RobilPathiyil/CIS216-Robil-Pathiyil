@@ -1,0 +1,91 @@
+# Assignment5/bmi.py
+from dataclasses import dataclass
+
+@dataclass
+class BMI:
+    _bmi: float = 0.0
+
+    @property
+    def bmi(self) -> float:
+        return self._bmi
+
+    def validate_float(self, value: float, minimum: float, maximum: float):
+        if not isinstance(value, (int, float)):
+            raise TypeError("value must be a number")
+        if value < minimum or value > maximum:
+            raise ValueError(f"value out of range [{minimum}, {maximum}]")
+
+    def feet_to_inches(self, feet: float) -> float:
+        self.validate_float(feet, 0, 9)
+        return feet * 12.0
+
+    def inches_to_meters(self, inches: float) -> float:
+        self.validate_float(inches, 0, 120)
+        return inches * 0.0254
+
+    def pounds_to_kilograms(self, pounds: float) -> float:
+        self.validate_float(pounds, 0, 1500)
+        return pounds * 0.45359237
+
+    def calculate_metric(self, kilograms: float, meters: float) -> float:
+        self.validate_float(kilograms, 0, 700)
+        self.validate_float(meters, 0.3, 3.0)
+        self._bmi = kilograms / (meters ** 2)
+        return self._bmi
+
+    def calculate_us(self, pounds: float, feet: float, inches: float) -> float:
+        kg = self.pounds_to_kilograms(pounds)
+        total_inches = self.feet_to_inches(feet) + inches
+        m = self.inches_to_meters(total_inches)
+        return self.calculate_metric(kg, m)
+# Assignment5/tests/test_bmi.py
+import math
+import pytest
+from Assignment5.bmi import BMI
+
+def test_calculate_metric_typical():
+    b = BMI()
+    result = b.calculate_metric(70, 1.75)   # ~22.86
+    assert pytest.approx(result, rel=1e-3) == 22.857
+    assert pytest.approx(b.bmi, rel=1e-3) == 22.857
+
+def test_calculate_us_typical():
+    b = BMI()
+    # 180 lb, 5'10" (70 inches) -> ~25.83
+    result = b.calculate_us(180, 5, 10)
+    assert 25.7 < result < 26.0
+
+@pytest.mark.parametrize("bad, minv, maxv", [
+    ("x", 0, 10),
+    (-1, 0, 10),
+    (9999, 0, 10),
+])
+def test_validate_float_raises(bad, minv, maxv):
+    b = BMI()
+    if isinstance(bad, str):
+        with pytest.raises(TypeError):
+            b.validate_float(bad, minv, maxv)
+    else:
+        with pytest.raises(ValueError):
+            b.validate_float(bad, minv, maxv)
+
+def test_conversions_and_ranges():
+    b = BMI()
+    assert b.feet_to_inches(5) == 60
+    assert pytest.approx(b.inches_to_meters(70), rel=1e-6) == 70 * 0.0254
+    assert pytest.approx(b.pounds_to_kilograms(180), rel=1e-6) == 180 * 0.45359237
+    # Range checks
+    with pytest.raises(ValueError): b.feet_to_inches(12)
+    with pytest.raises(ValueError): b.inches_to_meters(200)
+    with pytest.raises(ValueError): b.pounds_to_kilograms(2000)
+# from repo root
+python -m venv .venv && source .venv/bin/activate   # (macOS/Linux)
+pip install -r Assignment5/requirements.txt
+
+# Option A: coverage
+coverage run -m pytest -q
+coverage report -m                      # ensure 100% on Assignment5/bmi.py
+coverage html                           # optional: creates htmlcov/index.html
+
+# Option B: pytest-cov
+# pytest --cov=Assignment5 --cov-report=term-missing
