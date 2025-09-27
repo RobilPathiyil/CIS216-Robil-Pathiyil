@@ -1,0 +1,304 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/src/employee.py
+# ──────────────────────────────────────────────────────────────────────────────
+"""
+Base classes and utilities for the Assignment 6 (Inheritance) activities.
+
+Resources referenced while implementing:
+- Wikiversity: Object-Oriented Programming/Inheritance
+- Python docs: dataclasses, abc
+
+Design notes
+------------
+* Employee is an abstract base class (ABC) that defines a minimum interface
+  (pay calculation + shared description).
+* Subclasses override `pay()` and can call `super().base_info()` when needed.
+* Basic validation helpers centralize common checks to keep subclasses clean.
+"""
+from __future__ import annotations
+from dataclasses import dataclass
+from abc import ABC, abstractmethod
+
+
+def _require_non_empty(value: str, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value.strip()
+
+
+def _require_non_negative(value: float, field: str) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field} must be a number")
+    if v < 0:
+        raise ValueError(f"{field} must be non-negative")
+    return v
+
+
+@dataclass(slots=True)
+class Employee(ABC):
+    name: str
+    emp_id: int
+
+    def __post_init__(self) -> None:
+        self.name = _require_non_empty(self.name, "name")
+        if not isinstance(self.emp_id, int) or self.emp_id <= 0:
+            raise ValueError("emp_id must be a positive integer")
+
+    @property
+    def role(self) -> str:
+        """Human-friendly role name; subclasses override class attribute `_ROLE`."""
+        return getattr(self, "_ROLE", self.__class__.__name__)
+
+    def base_info(self) -> str:
+        """Common description used by all employees."""
+        return f"{self.role} #{self.emp_id} — {self.name}"
+
+    @abstractmethod
+    def pay(self) -> float:
+        """Return the current pay for the period (e.g., biweekly)."""
+        raise NotImplementedError
+
+    def annualized_pay(self, periods_per_year: int = 26) -> float:
+        return self.pay() * periods_per_year
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/src/manager.py
+# ──────────────────────────────────────────────────────────────────────────────
+from __future__ import annotations
+from dataclasses import dataclass
+from .employee import Employee, _require_non_negative
+
+
+@dataclass(slots=True)
+class Manager(Employee):
+    """Salaried employee paid evenly each period."""
+    _ROLE: str = "Manager"
+    annual_salary: float = 0.0
+    periods_per_year: int = 26
+
+    def __post_init__(self) -> None:  # type: ignore[override]
+        super().__post_init__()
+        self.annual_salary = _require_non_negative(self.annual_salary, "annual_salary")
+        if not isinstance(self.periods_per_year, int) or self.periods_per_year <= 0:
+            raise ValueError("periods_per_year must be a positive integer")
+
+    def pay(self) -> float:  # override
+        return self.annual_salary / self.periods_per_year
+
+    # unique behavior
+    def approve_expense(self, amount: float, limit: float = 1000.0) -> bool:
+        amount = _require_non_negative(amount, "amount")
+        limit = _require_non_negative(limit, "limit")
+        return amount <= limit
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/src/sales.py
+# ──────────────────────────────────────────────────────────────────────────────
+from __future__ import annotations
+from dataclasses import dataclass
+from .employee import Employee, _require_non_negative
+
+
+def _require_rate_0_1(value: float, field: str) -> float:
+    v = _require_non_negative(value, field)
+    if v > 1:
+        raise ValueError(f"{field} must be between 0 and 1 inclusive")
+    return v
+
+
+@dataclass(slots=True)
+class SalesEmployee(Employee):
+    """Mixed comp: base + commission on current period sales."""
+    _ROLE: str = "Sales"
+    base_per_period: float = 0.0
+    commission_rate: float = 0.0  # 0..1
+    period_sales: float = 0.0
+
+    def __post_init__(self) -> None:  # type: ignore[override]
+        super().__post_init__()
+        self.base_per_period = _require_non_negative(self.base_per_period, "base_per_period")
+        self.commission_rate = _require_rate_0_1(self.commission_rate, "commission_rate")
+        self.period_sales = _require_non_negative(self.period_sales, "period_sales")
+
+    def record_sale(self, amount: float) -> None:
+        self.period_sales += _require_non_negative(amount, "amount")
+
+    def reset_period(self) -> None:
+        self.period_sales = 0.0
+
+    def pay(self) -> float:  # override
+        return self.base_per_period + self.commission_rate * self.period_sales
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/src/hourly.py
+# ──────────────────────────────────────────────────────────────────────────────
+from __future__ import annotations
+from dataclasses import dataclass
+from .employee import Employee, _require_non_negative
+
+
+@dataclass(slots=True)
+class HourlyEmployee(Employee):
+    """Hourly worker with overtime (>40) at 1.5x."""
+    _ROLE: str = "Hourly"
+    hourly_rate: float = 0.0
+    hours_worked: float = 0.0
+    overtime_multiplier: float = 1.5
+
+    def __post_init__(self) -> None:  # type: ignore[override]
+        super().__post_init__()
+        self.hourly_rate = _require_non_negative(self.hourly_rate, "hourly_rate")
+        self.hours_worked = _require_non_negative(self.hours_worked, "hours_worked")
+        self.overtime_multiplier = _require_non_negative(self.overtime_multiplier, "overtime_multiplier")
+        if self.overtime_multiplier < 1.0:
+            raise ValueError("overtime_multiplier must be >= 1.0")
+
+    def add_hours(self, hours: float) -> None:
+        self.hours_worked += _require_non_negative(hours, "hours")
+
+    def reset_period(self) -> None:
+        self.hours_worked = 0.0
+
+    def pay(self) -> float:  # override
+        regular = min(self.hours_worked, 40.0) * self.hourly_rate
+        overtime_hours = max(0.0, self.hours_worked - 40.0)
+        overtime = overtime_hours * self.hourly_rate * self.overtime_multiplier
+        return regular + overtime
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/src/__init__.py
+# ──────────────────────────────────────────────────────────────────────────────
+from .employee import Employee
+from .manager import Manager
+from .sales import SalesEmployee
+from .hourly import HourlyEmployee
+
+__all__ = [
+    "Employee",
+    "Manager",
+    "SalesEmployee",
+    "HourlyEmployee",
+]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/tests/test_employee.py
+# ──────────────────────────────────────────────────────────────────────────────
+import unittest
+from Assignment_6.src import Employee, Manager, SalesEmployee, HourlyEmployee
+
+
+class TestEmployeeShared(unittest.TestCase):
+    def test_base_info(self):
+        m = Manager(name="Ava Manager", emp_id=1, annual_salary=52000, periods_per_year=26)
+        self.assertIn("Manager", m.base_info())
+        self.assertIn("Ava Manager", m.base_info())
+
+    def test_annualized_pay(self):
+        h = HourlyEmployee(name="Pat Hourly", emp_id=2, hourly_rate=20, hours_worked=40)
+        self.assertAlmostEqual(h.annualized_pay(26), h.pay() * 26)
+
+    def test_validation(self):
+        with self.assertRaises(ValueError):
+            Manager(name=" ", emp_id=1, annual_salary=100000)
+        with self.assertRaises(ValueError):
+            Manager(name="X", emp_id=0, annual_salary=100000)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/tests/test_manager.py
+# ──────────────────────────────────────────────────────────────────────────────
+import unittest
+from Assignment_6.src import Manager
+
+
+class TestManager(unittest.TestCase):
+    def test_pay(self):
+        m = Manager(name="Dana", emp_id=10, annual_salary=78000, periods_per_year=26)
+        self.assertAlmostEqual(m.pay(), 78000/26)
+
+    def test_approve(self):
+        m = Manager(name="Dana", emp_id=10, annual_salary=78000)
+        self.assertTrue(m.approve_expense(500))
+        self.assertFalse(m.approve_expense(1500))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/tests/test_sales.py
+# ──────────────────────────────────────────────────────────────────────────────
+import unittest
+from Assignment_6.src import SalesEmployee
+
+
+class TestSales(unittest.TestCase):
+    def test_commission_pay(self):
+        s = SalesEmployee(name="Lee", emp_id=21, base_per_period=500, commission_rate=0.1)
+        s.record_sale(2000)
+        self.assertAlmostEqual(s.pay(), 500 + 0.1*2000)
+
+    def test_reset(self):
+        s = SalesEmployee(name="Lee", emp_id=21, base_per_period=500, commission_rate=0.1, period_sales=1000)
+        s.reset_period()
+        self.assertEqual(s.period_sales, 0.0)
+
+    def test_rate_bounds(self):
+        with self.assertRaises(ValueError):
+            SalesEmployee(name="Bad", emp_id=9, base_per_period=0, commission_rate=1.5)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/tests/test_hourly.py
+# ──────────────────────────────────────────────────────────────────────────────
+import unittest
+from Assignment_6.src import HourlyEmployee
+
+
+class TestHourly(unittest.TestCase):
+    def test_regular_pay(self):
+        h = HourlyEmployee(name="Sam", emp_id=30, hourly_rate=20, hours_worked=40)
+        self.assertAlmostEqual(h.pay(), 20*40)
+
+    def test_overtime_pay(self):
+        h = HourlyEmployee(name="Sam", emp_id=30, hourly_rate=20, hours_worked=50)
+        # 40 * 20 + 10 * 20 * 1.5 = 800 + 300 = 1100
+        self.assertAlmostEqual(h.pay(), 1100)
+
+    def test_add_and_reset(self):
+        h = HourlyEmployee(name="Sam", emp_id=30, hourly_rate=20)
+        h.add_hours(5)
+        h.add_hours(3.5)
+        self.assertAlmostEqual(h.hours_worked, 8.5)
+        h.reset_period()
+        self.assertEqual(h.hours_worked, 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-6/run_tests.py (optional convenience runner)
+# ──────────────────────────────────────────────────────────────────────────────
+"""Run all tests with a single command: `python -m Assignment-6.run_tests`"""
+import unittest
+
+if __name__ == "__main__":
+    unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.discover("Assignment-6/tests"))
