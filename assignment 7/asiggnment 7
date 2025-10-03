@@ -1,0 +1,112 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-7/src/payroll.py
+# ──────────────────────────────────────────────────────────────────────────────
+"""
+Polymorphism demo helpers that operate on the base class `Employee` while
+supporting any current or future subclasses.
+
+This module intentionally imports the inheritance lesson's classes to
+show how the SAME functions work for multiple concrete types at runtime.
+"""
+from __future__ import annotations
+from typing import Iterable
+
+# Reuse the classes from the previous lesson's package
+from Assignment_6.src import Employee
+
+
+def pay_stub(emp: Employee) -> str:
+    """Return a one-line pay stub for any Employee subtype (dynamic dispatch)."""
+    return f"{emp.base_info()} | Period pay: ${emp.pay():.2f}"
+
+
+def total_payroll(employees: Iterable[Employee]) -> float:
+    """Sum pay across a heterogeneous collection of Employee instances."""
+    return sum(e.pay() for e in employees)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-7/src/main.py
+# ──────────────────────────────────────────────────────────────────────────────
+"""
+Main program that demonstrates polymorphism using the Employees domain.
+
+What it shows:
+- Each subclass overrides `pay()`; dynamic dispatch calls the correct
+  implementation even when referenced as the base class (`Employee`).
+- Each subclass is an instance of both its own class and the base class.
+- Shared interface (base class) enables uniform processing of many types.
+"""
+from __future__ import annotations
+from typing import List
+
+from Assignment_6.src import Manager, SalesEmployee, HourlyEmployee, Employee
+from .payroll import pay_stub, total_payroll
+
+
+def demo() -> None:
+    # Create diverse employees (all are also Employees)
+    staff: List[Employee] = [
+        Manager(name="Ava Manager", emp_id=1, annual_salary=78000, periods_per_year=26),
+        SalesEmployee(name="Lee Sales", emp_id=2, base_per_period=500, commission_rate=0.10, period_sales=3000),
+        HourlyEmployee(name="Sam Hourly", emp_id=3, hourly_rate=22.5, hours_worked=47),
+    ]
+
+    print("— Demonstrating polymorphism via shared interface —")
+    for e in staff:
+        # Referenced as base class but overridden methods dispatch to subclass
+        print(pay_stub(e))
+        print(f"isinstance({e.role}, Employee) ->", isinstance(e, Employee))
+        print(f"Class: {e.__class__.__name__}\n")
+
+    print("Total payroll this period:", f"${total_payroll(staff):.2f}")
+
+    # Show that a base-typed variable can hold any subclass
+    emp_ref: Employee = staff[0]
+    print("Base-typed variable holds:", emp_ref.__class__.__name__, "| pay:", f"${emp_ref.pay():.2f}")
+
+
+if __name__ == "__main__":
+    demo()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File: Assignment-7/tests/test_polymorphism.py
+# ──────────────────────────────────────────────────────────────────────────────
+import unittest
+from typing import List
+
+from Assignment_6.src import Employee, Manager, SalesEmployee, HourlyEmployee
+from Assignment_7.src.payroll import total_payroll, pay_stub
+
+
+class TestPolymorphism(unittest.TestCase):
+    def setUp(self) -> None:
+        self.m = Manager(name="Ava", emp_id=1, annual_salary=52000, periods_per_year=26)
+        self.s = SalesEmployee(name="Lee", emp_id=2, base_per_period=600, commission_rate=0.2, period_sales=1500)
+        self.h = HourlyEmployee(name="Sam", emp_id=3, hourly_rate=25, hours_worked=45)
+
+    def test_dynamic_dispatch(self):
+        # Base reference -> subclass implementation should run
+        staff: List[Employee] = [self.m, self.s, self.h]
+        pays = [e.pay() for e in staff]
+        # Sanity checks against known formulas (not exact amounts, just type-specific effects)
+        self.assertAlmostEqual(pays[0], 52000/26)  # Manager salaried
+        self.assertAlmostEqual(pays[1], 600 + 0.2*1500)  # Sales base + commission
+        # Hourly with overtime: 40*25 + 5*25*1.5 = 1000 + 187.5 = 1187.5
+        self.assertAlmostEqual(pays[2], 1187.5)
+
+    def test_isinstance_chain(self):
+        self.assertIsInstance(self.m, Employee)
+        self.assertIsInstance(self.s, Employee)
+        self.assertIsInstance(self.h, Employee)
+
+    def test_helpers_use_common_interface(self):
+        staff: List[Employee] = [self.m, self.s, self.h]
+        self.assertIn("Period pay:", pay_stub(self.m))
+        total = total_payroll(staff)
+        self.assertGreater(total, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
