@@ -1,0 +1,187 @@
+# text_editor.py
+import tkinter as tk
+from tkinter import filedialog, messagebox
+
+class TextEditor(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Simple Text Editor")
+        self.geometry("800x500")
+        self._filepath = None
+        self._build_ui()
+        self._bind_shortcuts()
+
+    # ---------- UI ----------
+    def _build_ui(self):
+        self._build_menu()
+
+        # container frame to hold text + scrollbars cleanly
+        container = tk.Frame(self)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        # vertical & horizontal scrollbars
+        yscroll = tk.Scrollbar(container, orient=tk.VERTICAL)
+        xscroll = tk.Scrollbar(container, orient=tk.HORIZONTAL)
+
+        # Text widget: wrap disabled so horizontal scrollbar works
+        self.text = tk.Text(
+            container,
+            undo=True,
+            wrap="none",
+            xscrollcommand=xscroll.set,
+            yscrollcommand=yscroll.set,
+            font=("Consolas", 12)
+        )
+        self.text.grid(row=0, column=0, sticky="nsew")
+
+        # place scrollbars
+        yscroll.config(command=self.text.yview)
+        yscroll.grid(row=0, column=1, sticky="ns")
+        xscroll.config(command=self.text.xview)
+        xscroll.grid(row=1, column=0, sticky="ew")
+
+        # grid weights
+        container.rowconfigure(0, weight=1)
+        container.columnconfigure(0, weight=1)
+
+        # right-click context menu
+        self.ctx = tk.Menu(self, tearoff=0)
+        self.ctx.add_command(label="Cut", command=lambda: self.event_generate("<<Cut>>"))
+        self.ctx.add_command(label="Copy", command=lambda: self.event_generate("<<Copy>>"))
+        self.ctx.add_command(label="Paste", command=lambda: self.event_generate("<<Paste>>"))
+        self.text.bind("<Button-3>", self._show_context_menu)  # Windows/Linux
+        self.text.bind("<Control-Button-1>", self._show_context_menu)  # macOS alternative
+
+    def _build_menu(self):
+        menubar = tk.Menu(self)
+        # File
+        filemenu = tk.Menu(menubar, tearoff=0)
+        filemenu.add_command(label="New", accelerator="Ctrl+N", command=self._new_file)
+        filemenu.add_command(label="Open…", accelerator="Ctrl+O", command=self._open_file)
+        filemenu.add_command(label="Save", accelerator="Ctrl+S", command=self._save)
+        filemenu.add_command(label="Save As…", accelerator="Ctrl+Shift+S", command=self._save_as)
+        filemenu.add_separator()
+        filemenu.add_command(label="Exit", accelerator="Ctrl+Q", command=self._exit_app)
+        menubar.add_cascade(label="File", menu=filemenu)
+
+        # Edit
+        editmenu = tk.Menu(menubar, tearoff=0)
+        editmenu.add_command(label="Cut", accelerator="Ctrl+X", command=lambda: self.event_generate("<<Cut>>"))
+        editmenu.add_command(label="Copy", accelerator="Ctrl+C", command=lambda: self.event_generate("<<Copy>>"))
+        editmenu.add_command(label="Paste", accelerator="Ctrl+V", command=lambda: self.event_generate("<<Paste>>"))
+        editmenu.add_separator()
+        editmenu.add_command(label="Undo", accelerator="Ctrl+Z", command=lambda: self.event_generate("<<Undo>>"))
+        editmenu.add_command(label="Redo", accelerator="Ctrl+Y", command=lambda: self.event_generate("<<Redo>>"))
+        menubar.add_cascade(label="Edit", menu=editmenu)
+
+        # Help
+        helpmenu = tk.Menu(menubar, tearoff=0)
+        helpmenu.add_command(label="About", command=lambda: messagebox.showinfo(
+            "About", "Simple Text Editor\nAssignment 8"))
+        menubar.add_cascade(label="Help", menu=helpmenu)
+
+        self.config(menu=menubar)
+
+    # ---------- File ops ----------
+    def _new_file(self):
+        if self._maybe_save_changes():
+            self.text.delete("1.0", tk.END)
+            self._filepath = None
+            self._update_title()
+
+    def _open_file(self):
+        if not self._maybe_save_changes():
+            return
+        path = filedialog.askopenfilename(
+            title="Open",
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
+        )
+        if not path:
+            return
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            self.text.delete("1.0", tk.END)
+            self.text.insert("1.0", content)
+            self._filepath = path
+            self._update_title()
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open file:\n{e}")
+
+    def _save(self):
+        if self._filepath is None:
+            return self._save_as()
+        try:
+            with open(self._filepath, "w", encoding="utf-8") as f:
+                f.write(self.text.get("1.0", tk.END))
+            self._update_title(saved=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save file:\n{e}")
+
+    def _save_as(self):
+        path = filedialog.asksaveasfilename(
+            title="Save As",
+            defaultextension=".txt",
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
+        )
+        if not path:
+            return
+        self._filepath = path
+        self._save()
+
+    # ---------- Helpers ----------
+    def _maybe_save_changes(self):
+        # simple dirty check: compare current text to disk if we have a file, or non-empty if new
+        current = self.text.get("1.0", tk.END).rstrip("\n")
+        if self._filepath:
+            try:
+                with open(self._filepath, "r", encoding="utf-8") as f:
+                    disk = f.read().rstrip("\n")
+            except Exception:
+                disk = ""
+        else:
+            disk = ""
+        if current != disk:
+            resp = messagebox.askyesnocancel("Save changes?", "Do you want to save your changes?")
+            if resp is None:   # Cancel
+                return False
+            if resp:           # Yes
+                self._save()
+        return True
+
+    def _update_title(self, saved=False):
+        name = self._filepath if self._filepath else "Untitled"
+        mark = "" if saved else ""
+        self.title(f"{name} - Simple Text Editor{mark}")
+
+    def _show_context_menu(self, event):
+        try:
+            self.ctx.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.ctx.grab_release()
+
+    def _exit_app(self):
+        if self._maybe_save_changes():
+            self.destroy()
+
+    def _bind_shortcuts(self):
+        # File
+        self.bind("<Control-n>", lambda e: self._new_file())
+        self.bind("<Control-o>", lambda e: self._open_file())
+        self.bind("<Control-s>", lambda e: self._save())
+        self.bind("<Control-S>", lambda e: self._save_as())  # Ctrl+Shift+S
+        self.bind("<Control-q>", lambda e: self._exit_app())
+
+        # Edit
+        self.bind("<Control-x>", lambda e: self.event_generate("<<Cut>>"))
+        self.bind("<Control-c>", lambda e: self.event_generate("<<Copy>>"))
+        self.bind("<Control-v>", lambda e: self.event_generate("<<Paste>>"))
+        self.bind("<Control-z>", lambda e: self.event_generate("<<Undo>>"))
+        self.bind("<Control-y>", lambda e: self.event_generate("<<Redo>>"))
+
+def main():
+    app = TextEditor()
+    app.mainloop()
+
+if __name__ == "__main__":
+    main()
