@@ -1,0 +1,183 @@
+"""
+CLI for Assignment 9 Project Planner
+Run: python main.py --help
+
+Examples:
+  # 1) Init a project file
+  python main.py init --name "A9 Demo" --objective "Practice project planning" --scope "MVP demo app"
+
+  # 2) Add stakeholder, risk, tasks (WBS)
+  python main.py add-stakeholder --name "Robil Pathiyil" --role "PM/Dev"
+  python main.py add-risk --id R1 --desc "Underestimate time" --likelihood High --impact Medium --mitigation "Trim scope"
+
+  python main.py add-task --id T1 --name "Charter & Scope" --start 2025-10-17 --days 1 --assignee "Robil"
+  python main.py add-task --id T2 --name "WBS & Estimates" --start 2025-10-17 --days 1 --depends T1 --assignee "Robil"
+  python main.py add-task --id T3 --name "Implement MVP" --start 2025-10-18 --days 1 --depends T2 --assignee "Robil"
+  python main.py add-task --id T4 --name "QA & README" --start 2025-10-18 --days 1 --depends T3 --assignee "Robil"
+
+  # 3) Status + checks
+  python main.py list
+  python main.py set-status --id T3 --status Done
+  python main.py check
+
+  # 4) Export Gantt CSV
+  python main.py export-gantt --out gantt.csv
+"""
+
+import argparse
+from typing import Optional, List
+from project import (
+    Project,
+    load_project,
+    save_project,
+    DEFAULT_FILE,
+)
+
+def require_project(existing: bool = True) -> Project:
+    p = load_project()
+    if existing and p is None:
+        raise SystemExit("No project.json found. Run `python main.py init ...` first.")
+    return p
+
+def cmd_init(args: argparse.Namespace) -> None:
+    p = Project(
+        name=args.name,
+        objective=args.objective,
+        scope=args.scope,
+        deliverables=args.deliverable or [],
+        quality_plan=args.quality or [],
+    )
+    save_project(p)
+    print(f"Initialized project '{p.name}' -> {DEFAULT_FILE}")
+
+def cmd_add_stakeholder(args: argparse.Namespace) -> None:
+    p = require_project()
+    p.add_stakeholder(args.name, args.role, args.notes or "")
+    save_project(p)
+    print(f"Added stakeholder: {args.name} ({args.role})")
+
+def cmd_add_risk(args: argparse.Namespace) -> None:
+    p = require_project()
+    p.add_risk(args.id, args.desc, args.likelihood, args.impact, args.mitigation or "")
+    save_project(p)
+    print(f"Added risk: {args.id} - {args.desc}")
+
+def cmd_add_task(args: argparse.Namespace) -> None:
+    p = require_project()
+    depends = args.depends or []
+    p.add_task(
+        tid=args.id,
+        name=args.name,
+        start_iso=args.start,
+        duration_days=args.days,
+        depends_on=depends,
+        assignee=args.assignee or "",
+    )
+    save_project(p)
+    print(f"Added task: {args.id} '{args.name}' ({args.start} for {args.days}d)")
+
+def cmd_set_status(args: argparse.Namespace) -> None:
+    p = require_project()
+    p.set_task_status(args.id, args.status)
+    save_project(p)
+    print(f"Task {args.id} -> {args.status}")
+
+def cmd_list(args: argparse.Namespace) -> None:
+    p = require_project()
+    print(f"\nProject: {p.name}\nObjective: {p.objective}\nScope: {p.scope}\n")
+    print("=== Tasks (by start) ===")
+    for t in p.list_tasks():
+        deps = ",".join(sorted(t.depends_on)) or "-"
+        print(f"{t.id:>3} | {t.start.isoformat()} -> {t.end_date().isoformat()} | {t.duration_days:>2}d | "
+              f"{t.status:12} | deps: {deps} | {t.name} (assignee: {t.assignee or '-'})")
+    print("\n=== Stakeholders ===")
+    for s in p.stakeholders.values():
+        print(f"- {s.name} ({s.role})")
+    print("\n=== Risks ===")
+    for r in p.risks.values():
+        print(f"- {r.id}: {r.description} [L={r.likelihood}, I={r.impact}] Mitigation: {r.mitigation}")
+    print()
+
+def cmd_check(args: argparse.Namespace) -> None:
+    p = require_project()
+    problems = p.check_dependency_violations()
+    if not problems:
+        print("No dependency timing issues found. ✅")
+        return
+    print("Dependency issues:")
+    for m in problems:
+        print(f"- {m}")
+
+def cmd_export_gantt(args: argparse.Namespace) -> None:
+    p = require_project()
+    out = args.out
+    p.export_gantt_csv(out)
+    print(f"Gantt CSV exported -> {out}")
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description="Assignment 9 Project Planner")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    # init
+    sp = sub.add_parser("init", help="Initialize a new project.json")
+    sp.add_argument("--name", required=True)
+    sp.add_argument("--objective", required=True)
+    sp.add_argument("--scope", required=True)
+    sp.add_argument("--deliverable", action="append", help="Repeatable; e.g., --deliverable code --deliverable README")
+    sp.add_argument("--quality", action="append", help="Repeatable QA/QC steps")
+    sp.set_defaults(func=cmd_init)
+
+    # add-stakeholder
+    sp = sub.add_parser("add-stakeholder", help="Add a stakeholder")
+    sp.add_argument("--name", required=True)
+    sp.add_argument("--role", required=True)
+    sp.add_argument("--notes")
+    sp.set_defaults(func=cmd_add_stakeholder)
+
+    # add-risk
+    sp = sub.add_parser("add-risk", help="Add a risk")
+    sp.add_argument("--id", required=True)
+    sp.add_argument("--desc", required=True)
+    sp.add_argument("--likelihood", choices=["Low", "Medium", "High"], required=True)
+    sp.add_argument("--impact", choices=["Low", "Medium", "High"], required=True)
+    sp.add_argument("--mitigation")
+    sp.set_defaults(func=cmd_add_risk)
+
+    # add-task
+    sp = sub.add_parser("add-task", help="Add a task (WBS item)")
+    sp.add_argument("--id", required=True)
+    sp.add_argument("--name", required=True)
+    sp.add_argument("--start", required=True, help="YYYY-MM-DD")
+    sp.add_argument("--days", required=True, type=int)
+    sp.add_argument("--depends", nargs="*", help="Task IDs this depends on")
+    sp.add_argument("--assignee")
+    sp.set_defaults(func=cmd_add_task)
+
+    # set-status
+    sp = sub.add_parser("set-status", help="Update a task status")
+    sp.add_argument("--id", required=True)
+    sp.add_argument("--status", choices=["Planned", "In-Progress", "Done"], required=True)
+    sp.set_defaults(func=cmd_set_status)
+
+    # list
+    sp = sub.add_parser("list", help="List project tasks/stakeholders/risks")
+    sp.set_defaults(func=cmd_list)
+
+    # check
+    sp = sub.add_parser("check", help="Check for schedule/dependency issues")
+    sp.set_defaults(func=cmd_check)
+
+    # export-gantt
+    sp = sub.add_parser("export-gantt", help="Export Gantt CSV")
+    sp.add_argument("--out", required=True)
+    sp.set_defaults(func=cmd_export_gantt)
+
+    return ap
+
+def main(argv: Optional[List[str]] = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    args.func(args)
+
+if __name__ == "__main__":
+    main()
