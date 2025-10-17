@@ -1,0 +1,213 @@
+"""
+Project Planning Mini-Framework (Assignment 9)
+Author: Robil Pathiyil
+
+Resources consulted (non-Wikiversity):
+- Python dataclasses: https://docs.python.org/3/library/dataclasses.html
+- Python argparse: https://docs.python.org/3/library/argparse.html
+- ISO 8601 dates: https://www.iso.org/iso-8601-date-and-time-format.html
+- Gantt CSV idea: https://www.excelforfreelancers.com/how-to-create-a-gantt-chart-in-excel (conceptual reference)
+- CSV module: https://docs.python.org/3/library/csv.html
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass, field, asdict
+from datetime import date, timedelta
+from typing import Dict, List, Optional, Set
+import json
+import csv
+import os
+
+
+def parse_iso(d: str) -> date:
+    """Parse YYYY-MM-DD to date. Keeps inputs consistent for grading/QA."""
+    year, month, day = map(int, d.split("-"))
+    return date(year, month, day)
+
+
+@dataclass
+class Stakeholder:
+    name: str
+    role: str
+    notes: str = ""
+
+
+@dataclass
+class Risk:
+    id: str
+    description: str
+    likelihood: str  # "Low" | "Medium" | "High"
+    impact: str      # "Low" | "Medium" | "High"
+    mitigation: str = ""
+
+
+@dataclass
+class Task:
+    id: str
+    name: str
+    start: date
+    duration_days: int
+    depends_on: Set[str] = field(default_factory=set)
+    assignee: str = ""
+    status: str = "Planned"  # Planned | In-Progress | Done
+
+    def end_date(self) -> date:
+        # End is inclusive, so duration 1 day => start == end
+        return self.start + timedelta(days=max(self.duration_days - 1, 0))
+
+
+@dataclass
+class Project:
+    name: str
+    objective: str
+    scope: str
+    deliverables: List[str] = field(default_factory=list)
+    stakeholders: Dict[str, Stakeholder] = field(default_factory=dict)
+    risks: Dict[str, Risk] = field(default_factory=dict)
+    tasks: Dict[str, Task] = field(default_factory=dict)
+    quality_plan: List[str] = field(default_factory=list)  # QA/QC checklist items
+
+    # --- Stakeholders ---
+    def add_stakeholder(self, name: str, role: str, notes: str = "") -> None:
+        self.stakeholders[name] = Stakeholder(name, role, notes)
+
+    # --- Risks ---
+    def add_risk(self, rid: str, description: str, likelihood: str, impact: str, mitigation: str = "") -> None:
+        if rid in self.risks:
+            raise ValueError(f"Risk {rid} already exists.")
+        self.risks[rid] = Risk(rid, description, likelihood, impact, mitigation)
+
+    # --- Tasks (WBS items) ---
+    def add_task(
+        self,
+        tid: str,
+        name: str,
+        start_iso: str,
+        duration_days: int,
+        depends_on: Optional[List[str]] = None,
+        assignee: str = "",
+    ) -> None:
+        if tid in self.tasks:
+            raise ValueError(f"Task {tid} already exists.")
+        depends = set(depends_on or [])
+        # Simple dependency check
+        for d in depends:
+            if d not in self.tasks:
+                raise ValueError(f"Dependency '{d}' not found for task '{tid}'.")
+        t = Task(
+            id=tid,
+            name=name,
+            start=parse_iso(start_iso),
+            duration_days=duration_days,
+            depends_on=depends,
+            assignee=assignee,
+        )
+        self.tasks[tid] = t
+
+    def set_task_status(self, tid: str, status: str) -> None:
+        if tid not in self.tasks:
+            raise KeyError(f"No such task: {tid}")
+        if status not in {"Planned", "In-Progress", "Done"}:
+            raise ValueError("Status must be one of: Planned | In-Progress | Done")
+        self.tasks[tid].status = status
+
+    def list_tasks(self) -> List[Task]:
+        return sorted(self.tasks.values(), key=lambda t: (t.start, t.id))
+
+    # --- Simple schedule validation ---
+    def check_dependency_violations(self) -> List[str]:
+        """Return messages for any tasks that start before their dependencies end."""
+        msgs = []
+        for t in self.tasks.values():
+            for dep_id in t.depends_on:
+                dep = self.tasks[dep_id]
+                if t.start <= dep.end_date():
+                    msgs.append(
+                        f"Task {t.id} ('{t.name}') starts {t.start} before dependency {dep.id} "
+                        f"('{dep.name}') ends {dep.end_date()}."
+                    )
+        return msgs
+
+    # --- Export Gantt CSV ---
+    def export_gantt_csv(self, path: str) -> None:
+        """
+        Export columns: TaskID, TaskName, Start, End, DurationDays, DependsOn, Assignee, Status
+        Open in Excel/Google Sheets; insert a bar chart or use conditional formatting to visualize.
+        """
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["TaskID", "TaskName", "Start", "End", "DurationDays", "DependsOn", "Assignee", "Status"])
+            for t in self.list_tasks():
+                writer.writerow([
+                    t.id,
+                    t.name,
+                    t.start.isoformat(),
+                    t.end_date().isoformat(),
+                    t.duration_days,
+                    ";".join(sorted(t.depends_on)) if t.depends_on else "",
+                    t.assignee,
+                    t.status
+                ])
+
+    # --- Persistence ---
+    def to_json(self) -> str:
+        def encode(obj):
+            if isinstance(obj, date):
+                return obj.isoformat()
+            if isinstance(obj, set):
+                return list(obj)
+            if hasattr(obj, "__dict__") or isinstance(obj, (Stakeholder, Risk, Task)):
+                d = asdict(obj)
+                # convert date in Task
+                if "start" in d and isinstance(d["start"], date):
+                    d["start"] = d["start"].isoformat()
+                if "depends_on" in d and isinstance(d["depends_on"], set):
+                    d["depends_on"] = sorted(list(d["depends_on"]))
+                return d
+            return obj
+
+        return json.dumps(asdict(self), default=encode, indent=2)
+
+    @staticmethod
+    def from_json(s: str) -> Project:
+        raw = json.loads(s)
+        p = Project(
+            name=raw["name"],
+            objective=raw["objective"],
+            scope=raw["scope"],
+            deliverables=raw.get("deliverables", []),
+            quality_plan=raw.get("quality_plan", []),
+        )
+        # stakeholders
+        for name, st in raw.get("stakeholders", {}).items():
+            p.stakeholders[name] = Stakeholder(**st)
+        # risks
+        for rid, rk in raw.get("risks", {}).items():
+            p.risks[rid] = Risk(**rk)
+        # tasks
+        for tid, tk in raw.get("tasks", {}).items():
+            p.tasks[tid] = Task(
+                id=tk["id"],
+                name=tk["name"],
+                start=parse_iso(tk["start"]),
+                duration_days=int(tk["duration_days"]),
+                depends_on=set(tk.get("depends_on", [])),
+                assignee=tk.get("assignee", ""),
+                status=tk.get("status", "Planned"),
+            )
+        return p
+
+
+# --- Convenience helpers for saving/loading a working file ---
+DEFAULT_FILE = "project.json"
+
+def load_project(path: str = DEFAULT_FILE) -> Optional[Project]:
+    if not os.path.exists(path):
+        return None
+    with open(path, "r") as f:
+        return Project.from_json(f.read())
+
+def save_project(project: Project, path: str = DEFAULT_FILE) -> None:
+    with open(path, "w") as f:
+        f.write(project.to_json())
