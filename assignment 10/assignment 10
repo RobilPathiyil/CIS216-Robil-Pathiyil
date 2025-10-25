@@ -1,0 +1,177 @@
+import tkinter as tk
+from tkinter import ttk
+from tkinter import filedialog, messagebox
+
+
+class TextEditorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Simple Text Editor")
+        self.filename = None  # tracks the current file path
+
+        # configure main window rows/cols to expand
+        self.root.rowconfigure(0, weight=1)
+        self.root.columnconfigure(0, weight=1)
+
+        # MAIN TEXT AREA + SCROLLBARS
+        self.text_frame = ttk.Frame(self.root)
+        self.text_frame.grid(row=0, column=0, sticky="nsew")
+
+        self.text_area = tk.Text(self.text_frame, wrap="none", undo=True)
+        self.text_area.grid(row=0, column=0, sticky="nsew")
+
+        # scrollbars
+        y_scroll = ttk.Scrollbar(self.text_frame, orient="vertical", command=self.text_area.yview)
+        x_scroll = ttk.Scrollbar(self.text_frame, orient="horizontal", command=self.text_area.xview)
+        self.text_area.configure(yscrollcommand=y_scroll.set, xscrollcommand=x_scroll.set)
+
+        y_scroll.grid(row=0, column=1, sticky="ns")
+        x_scroll.grid(row=1, column=0, sticky="ew")
+
+        # make the text box expandable
+        self.text_frame.rowconfigure(0, weight=1)
+        self.text_frame.columnconfigure(0, weight=1)
+
+        # BUILD MENUS
+        self._build_menubar()
+
+        # CONTEXT MENU (right-click)
+        self._build_context_menu()
+        self.text_area.bind("<Button-3>", self._show_context_menu)      # Windows / Linux right click
+        self.text_area.bind("<Button-2>", self._show_context_menu)      # macOS right click (trackpad)
+
+        # KEYBOARD SHORTCUTS
+        self.root.bind("<Control-x>", self.cut_text)
+        self.root.bind("<Control-c>", self.copy_text)
+        self.root.bind("<Control-v>", self.paste_text)
+
+    # -------------------------
+    # Menu bar setup
+    # -------------------------
+    def _build_menubar(self):
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="New", command=self.new_file)
+        file_menu.add_command(label="Open...", command=self.open_file)
+        file_menu.add_command(label="Save", command=self.save_file)
+        file_menu.add_command(label="Save As...", command=self.save_file_as)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+
+        # Edit menu
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Edit", menu=edit_menu)
+        edit_menu.add_command(label="Cut    Ctrl+X", command=self.cut_text)
+        edit_menu.add_command(label="Copy   Ctrl+C", command=self.copy_text)
+        edit_menu.add_command(label="Paste  Ctrl+V", command=self.paste_text)
+
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About", command=self.show_about)
+
+    # -------------------------
+    # Context menu (right click)
+    # -------------------------
+    def _build_context_menu(self):
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(label="Cut", command=self.cut_text)
+        self.context_menu.add_command(label="Copy", command=self.copy_text)
+        self.context_menu.add_command(label="Paste", command=self.paste_text)
+
+    def _show_context_menu(self, event):
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+
+    # -------------------------
+    # File menu commands
+    # -------------------------
+    def new_file(self):
+        self.text_area.delete("1.0", tk.END)
+        self.filename = None
+        self.root.title("Simple Text Editor - Untitled")
+
+    def open_file(self):
+        path = filedialog.askopenfilename(
+            filetypes=[
+                ("Text Files", "*.txt"),
+                ("All Files", "*.*"),
+            ]
+        )
+        if not path:
+            return
+
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        self.text_area.delete("1.0", tk.END)
+        self.text_area.insert(tk.END, content)
+        self.filename = path
+        self.root.title(f"Simple Text Editor - {self.filename}")
+
+    def save_file(self, event=None):
+        if self.filename is None:
+            return self.save_file_as()
+        else:
+            with open(self.filename, "w", encoding="utf-8") as f:
+                f.write(self.text_area.get("1.0", tk.END))
+        messagebox.showinfo("Saved", "File saved successfully.")
+
+    def save_file_as(self, event=None):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[
+                ("Text Files", "*.txt"),
+                ("All Files", "*.*"),
+            ]
+        )
+        if not path:
+            return
+        self.filename = path
+        self.save_file()
+
+    # -------------------------
+    # Edit commands
+    # -------------------------
+    def cut_text(self, event=None):
+        self.copy_text()
+        self.text_area.delete("sel.first", "sel.last")
+        return "break"  # don't also trigger default
+
+    def copy_text(self, event=None):
+        try:
+            selected = self.text_area.get("sel.first", "sel.last")
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+        except tk.TclError:
+            # nothing selected
+            pass
+        return "break"
+
+    def paste_text(self, event=None):
+        try:
+            self.text_area.insert(tk.INSERT, self.root.clipboard_get())
+        except tk.TclError:
+            pass
+        return "break"
+
+    # -------------------------
+    # Help menu About dialog
+    # -------------------------
+    def show_about(self):
+        messagebox.showinfo(
+            "About",
+            "Simple Text Editor\nAssignment 10\n(c) Your Name\nThis is a basic GUI text editor demo built with tkinter."
+        )
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = TextEditorApp(root)
+    root.mainloop()
