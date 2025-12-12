@@ -1,0 +1,63 @@
+from flask import Flask, render_template_string, request
+
+app = Flask(__name__)
+
+# Main Route
+@app.route("/")
+def home():
+    return render_template_string("""
+        <h1>Team 13 Web Framework Demo</h1>
+        <p>This is a Flask application demonstrating server-side routing, 
+        dynamic content, templates, and request handling.</p>
+
+        <ul>
+            <li><a href="/about">About Page</a></li>
+            <li><a href="/hello/Student">Dynamic Route Example</a></li>
+            <li><a href="/form">Form Example</a></li>
+        </ul>
+    """)
+
+# Simple About Page
+@app.route("/about")
+def about():
+    return render_template_string("""
+        <h1>About This Demo</h1>
+        <p>This application was created for the Web Frameworks lesson 
+        in Object-Oriented Programming.</p>
+        <p>It uses Flask to demonstrate routing and server-side scripting.</p>
+        <a href="/">Return Home</a>
+    """)
+
+# Dynamic Route Example
+@app.route("/hello/<name>")
+def hello(name):
+    return render_template_string(f"""
+        <h1>Hello, {name}!</h1>
+        <p>This page shows how Flask handles dynamic URL parameters.</p>
+        <a href="/">Return Home</a>
+    """)
+
+# Form Example (GET/POST)
+@app.route("/form", methods=["GET", "POST"])
+def form_example():
+    if request.method == "POST":
+        user_name = request.form.get("username", "Anonymous")
+        return render_template_string(f"""
+            <h1>Form Submitted</h1>
+            <p>You entered: <strong>{user_name}</strong></p>
+            <a href="/form">Submit Again</a><br>
+            <a href="/">Return Home</a>
+        """)
+
+    return render_template_string("""
+        <h1>Form Input Example</h1>
+        <form method="POST">
+            <label>Enter Your Name:</label>
+            <input type="text" name="username">
+            <button type="submit">Submit</button>
+        </form>
+        <a href="/">Return Home</a>
+    """)
+
+if __name__ == "__main__":
+    app.run(debug=True)
