@@ -1,0 +1,8 @@
+oop-team12-blackjack/
+├─ src/                 # Source code (classes, main app)
+├─ assets/              # Images, icons, card graphics (if used)
+├─ docs/                # Design docs, UML diagrams, screenshots
+├─ meetings/            # Meeting notes (even if it's just you planning sessions)
+├─ .gitignore
+├─ README.md
+└─ LICENSE (optional)
