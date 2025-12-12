@@ -1,0 +1,50 @@
+import tkinter as tk
+from tkinter import ttk
+
+class OutputGenerator:
+    """
+    Simple class to generate output for the GUI.
+    This represents the 'logic' portion of the program.
+    """
+    def generate_message(self, user_text):
+        return f"You entered: {user_text}\nMessage length: {len(user_text)} characters."
+
+
+class Application(tk.Tk):
+    """
+    Main GUI application window (object-oriented design).
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.title("Team 15 GUI Application")
+        self.geometry("400x300")
+
+        # Logic class instance
+        self.generator = OutputGenerator()
+
+        # User input field
+        self.label = ttk.Label(self, text="Enter text:")
+        self.label.pack(pady=5)
+
+        self.entry = ttk.Entry(self, width=40)
+        self.entry.pack(pady=5)
+
+        # Generate button
+        self.button = ttk.Button(self, text="Generate Output", command=self.generate_output)
+        self.button.pack(pady=10)
+
+        # Output textbox
+        self.textbox = tk.Text(self, height=10, width=45)
+        self.textbox.pack(pady=5)
+
+    def generate_output(self):
+        user_input = self.entry.get()
+        result = self.generator.generate_message(user_input)
+        self.textbox.delete("1.0", tk.END)
+        self.textbox.insert(tk.END, result)
+
+
+if __name__ == "__main__":
+    app = Application()
+    app.mainloop()
